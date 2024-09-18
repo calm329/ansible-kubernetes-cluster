@@ -1,0 +1,82 @@
+---
+- name: Install AWX on Kubernetes using Helm
+  hosts: master_node
+  become: yes
+  collections:
+    - kubernetes.core
+    vars:
+    helm_repo: "https://ansible-community.github.io/awx-operator-helm/"
+    helm_chart: "awx-operator"
+    k8s_namespace: "awx"
+    awx_cr: |
+      apiVersion: awx.ansible.com/v1beta1
+      kind: AWX
+      metadata:
+        name: awx
+        namespace: awx
+      spec:
+        service_type: nodeport
+        postgres_storage_class: local-storage  # Specify the storage class for PostgreSQL
+    pv_config: |
+      apiVersion: v1
+      kind: PersistentVolume
+      metadata:
+        name: postgres-15-pv
+        namespace: awx
+      spec:
+        capacity:
+          storage: 10Gi
+        accessModes:
+          - ReadWriteOnce
+        local:
+          path: /mnt/storage  # Ensure this path exists on the node
+        storageClassName: local-storage
+        nodeAffinity:
+          required:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: kubernetes.io/hostname
+                operator: In
+                values:
+                - ubuntu-4gb-nbg1-2
+    pvc_config: |
+      apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
+        name: postgres-15-awx-postgres-15-0
+        namespace: awx
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 10Gi
+        storageClassName: local-storage
+    local_storage_config: |
+      apiVersion: storage.k8s.io/v1
+      kind: StorageClass
+      metadata:
+        name: local-storage
+        namespace: awx
+      provisioner: kubernetes.io/no-provisioner
+      volumeBindingMode: WaitForFirstConsumer
+  tasks:
+    - name: Install AWX Operator using Helm
+      command: helm install awx-operator awx-operator/"{{ helm_chart }}" --namespace "{{ k8s_namespace }}" --create-namespace
+
+    - name: Deploy AWX using custom resource
+      copy:
+        content: "{{ awx_cr }}"
+        dest: /tmp/awx-cr.yml
+
+    - name: Apply AWX custom resource
+      shell: kubectl apply -f /tmp/awx-cr.yml
+
+    - name: Verify Kubernetes config permissions
+      command: chmod 600 /root/.kube/config
+      when: ansible_facts['user_id'] == 0  # Only run this when the user is root
+
+    - name: Clean up temporary Helm GPG key
+      file:
+        path: /tmp/helm-signing.asc
+        state: absent

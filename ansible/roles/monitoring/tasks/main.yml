@@ -1,0 +1,10 @@
+---
+- name: Deploy SigNoz using Docker
+  shell: |
+    docker run --name signoz -d \
+    -p 3301:3301 -p 4317:4317 \
+    signoz/signoz
+
+- name: Expose SigNoz UI
+  shell: |
+    kubectl expose pod signoz --type=NodePort --name=signoz-ui --port=3301

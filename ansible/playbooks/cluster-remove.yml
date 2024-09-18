@@ -1,0 +1,78 @@
+---
+- name: Uninstall Kubernetes Cluster
+  hosts: all
+  become: yes
+  tasks:
+
+    - name: Drain node (if it's a worker node)
+      command: kubeadm reset -f
+      ignore_errors: yes
+      when: ansible_hostname != master_node
+
+    - name: Reset kubeadm on the master node
+      command: kubeadm reset -f
+      ignore_errors: yes
+      when: ansible_hostname == master_node
+
+    - name: Remove CNI configurations
+      file:
+        path: /etc/cni/net.d
+        state: absent
+
+    - name: Remove kubeconfig file
+      file:
+        path: ~/.kube
+        state: absent
+
+    - name: Remove Kubernetes binaries
+      file:
+        path: /usr/bin/kube*
+        state: absent
+
+    - name: Remove Kubernetes configuration directory
+      file:
+        path: /etc/kubernetes
+        state: absent
+
+    - name: Remove Kubernetes-related packages
+      package:
+        name:
+          - kubelet
+          - kubeadm
+          - kubectl
+        state: absent
+
+    - name: Stop and disable kubelet service
+      systemd:
+        name: kubelet
+        state: stopped
+        enabled: no
+
+    - name: Clean up IP tables rules
+      command: iptables -F
+      ignore_errors: yes
+
+    - name: Remove all network bridges
+      command: ip link delete cni0
+      ignore_errors: yes
+
+    - name: Remove Kubernetes directories
+      file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /var/lib/etcd
+        - /var/lib/kubelet
+        - /var/lib/dockershim
+        - /var/lib/cni
+        - /run/flannel
+
+    - name: Clean up leftover docker containers (if any)
+      shell: |
+        docker rm -f $(docker ps -aq)
+      ignore_errors: yes
+
+    - name: Clean up leftover docker images (if any)
+      shell: |
+        docker rmi -f $(docker images -aq)
+      ignore_errors: yes

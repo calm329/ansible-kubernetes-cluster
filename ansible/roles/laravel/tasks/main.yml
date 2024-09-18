@@ -1,0 +1,8 @@
+---
+- name: Create Laravel Kubernetes deployment
+  kubernetes:
+    definition: "{{ lookup('file', 'kubernetes/manifests/laravel-deployment.yaml') }}"
+
+- name: Create Ingress resource for Laravel app
+  kubernetes:
+    definition: "{{ lookup('file', 'kubernetes/manifests/ingress.yaml') }}"

@@ -1,0 +1,15 @@
+stages:
+  - build
+  - deploy
+
+build:
+  stage: build
+  script:
+    - docker build -t <your-laravel-image> .
+    - docker push <your-laravel-image>
+
+deploy:
+  stage: deploy
+  script:
+    - kubectl apply -f kubernetes/manifests/laravel-deployment.yaml
+    - kubectl apply -f kubernetes/manifests/ingress.yaml

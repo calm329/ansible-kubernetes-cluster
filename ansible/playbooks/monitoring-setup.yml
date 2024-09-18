@@ -1,0 +1,107 @@
+---  
+- name: Deploy SigNoz and OpenTelemetry Collector on Kubernetes  
+  hosts: master_node
+  tasks:  
+    - name: Ensure Helm is installed  
+      command: helm version  
+      register: helm_version_check  
+      ignore_errors: yes  
+
+    - name: Install Helm if not installed  
+      shell: curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash  
+      when: helm_version_check.rc != 0  
+
+    - name: Add SigNoz Helm repository  
+      command: helm repo add signoz https://charts.signoz.io  
+
+    - name: Update Helm repository  
+      command: helm repo update  
+
+    - name: Create namespace for SigNoz  
+      kubernetes.core.k8s:  
+        state: present  
+        definition:  
+          apiVersion: v1  
+          kind: Namespace  
+          metadata:  
+            name: platform  
+
+    - name: Check if SigNoz release already exists  
+      command: helm --namespace platform list -q  
+      register: existing_releases  
+
+    - name: Uninstall existing SigNoz release  
+      command: helm --namespace platform uninstall my-release  
+      when: "'my-release' in existing_releases.stdout_lines"  
+
+    - name: Deploy SigNoz using Helm  
+      command: helm --namespace platform install my-release signoz/signoz  
+      register: helm_install_output  
+
+    - name: Display Helm install output  
+      debug:  
+        var: helm_install_output.stdout  
+
+    - name: Install Cert-Manager  
+      command: kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.12.0/cert-manager.yaml  
+      register: cert_manager_install_output  
+
+    - name: Wait for Cert-Manager to be ready  
+      shell: |  
+        kubectl wait --for=condition=available --timeout=600s --namespace cert-manager deployment/cert-manager  
+        kubectl wait --for=condition=available --timeout=600s --namespace cert-manager deployment/cert-manager-webhook  
+        kubectl wait --for=condition=available --timeout=600s --namespace cert-manager deployment/cert-manager-cainjector  
+      retries: 5  
+      delay: 30  
+      register: cert_manager_ready  
+      until: cert_manager_ready is succeeded  
+
+    - name: Install OpenTelemetry Operator  
+      shell: kubectl apply -f https://github.com/open-telemetry/opentelemetry-operator/releases/download/v0.88.0/opentelemetry-operator.yaml  
+      register: otel_operator_install_output  
+
+    - name: Ensure OpenTelemetry Operator webhook and services are ready  
+      shell: |  
+        kubectl wait --for=condition=available --timeout=600s --namespace opentelemetry-operator-system deployment/opentelemetry-operator-controller-manager  
+      retries: 5  
+      delay: 30  
+      register: otel_operator_ready  
+      until: otel_operator_ready is succeeded  
+
+    - name: Deploy simplest possible OpenTelemetry Collector  
+      kubernetes.core.k8s:  
+        state: present  
+        definition:  
+          apiVersion: opentelemetry.io/v1alpha1  
+          kind: OpenTelemetryCollector  
+          metadata:  
+            name: simplest  
+            namespace: platform  
+          spec:  
+            mode: deployment  
+            config: |  
+              receivers:  
+                otlp:  
+                  protocols:  
+                    grpc:  
+                    http  
+              processors:  
+                batch  
+              exporters:  
+                logging  
+                  # Configure this endpoint to the SigNoz OTLP receiver  
+                  endpoint: "http://my-release-signoz-otel-collector.platform.svc.cluster.local:4317"  
+              service:  
+                pipelines:  
+                  traces:  
+                    receivers: [otlp]  
+                    processors: [batch]  
+                    exporters: [logging]  
+
+    - name: Display collector deployment status  
+      command: kubectl -n platform get pods  
+      register: k8s_pods  
+
+    - name: Show collector pods status  
+      debug:  
+        var: k8s_pods.stdout

@@ -1,0 +1,22 @@
+---
+- name: Update and upgrade the system
+  apt:
+    update_cache: yes
+    upgrade: dist
+
+- name: Install Docker
+  apt:
+    name: docker.io
+    state: present
+    update_cache: yes
+
+- name: Add a new user
+  user:
+    name: devops_user
+    groups: sudo
+    state: present
+
+- name: Set up SSH keys
+  authorized_key:
+    user: devops_user
+    key: "{{ lookup('file', '/root/.ssh/id_rsa.pub') }}"

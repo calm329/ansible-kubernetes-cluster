@@ -1,0 +1,20 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: signoz
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: signoz
+  template:
+    metadata:
+      labels:
+        app: signoz
+    spec:
+      containers:
+        - name: signoz
+          image: signoz/signoz
+          ports:
+            - containerPort: 3301
+            - containerPort: 4317

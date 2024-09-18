@@ -1,0 +1,3 @@
+---
+# Default variables for the AWX role
+awx_namespace: awx

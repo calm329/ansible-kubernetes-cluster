@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: signoz-config
+data:
+  SIGNOZ_BACKEND: "http://localhost:3301"
+  SIGNOZ_UI_PORT: "3301"

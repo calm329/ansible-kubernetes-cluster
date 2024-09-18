@@ -1,0 +1,3 @@
+---
+# Default variables for the Kubernetes role
+kubernetes_network_cidr: "10.244.0.0/16"
